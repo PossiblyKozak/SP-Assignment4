@@ -12,10 +12,10 @@ SRC_DIR = ./src
 INC_DIR = ./inc
 
 TARGET = ${BIN_DIR}/chat-client
-OBJS = ${OBJ_DIR}/chat-client.o
+OBJS = ${OBJ_DIR}/chat-client.o -lpthread
 
 CC = cc
-CC_FLAGS = -I${INC_DIR} -g
+CC_FLAGS = -I${INC_DIR} -g -pthread
 
 # FINAL BINARY Target
 ${TARGET} : ${OBJS}
@@ -25,7 +25,7 @@ ${TARGET} : ${OBJS}
 # =======================================================
 #                     Dependencies
 # =======================================================
-${OBJS}: ${OBJ_DIR}/%.o: ${SRC_DIR}/%.c
+${OBJS}: ${OBJ_DIR}/%.o: ${SRC_DIR}/%.c 
 	${CC} -c ${CC_FLAGS} $< -o $@
 
 #

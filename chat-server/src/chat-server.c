@@ -7,6 +7,9 @@
 #include <sys/types.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <pthread.h>
+
+pthread_t clientThreads[10];
 
 void error(const char *msg)
 {
@@ -14,15 +17,44 @@ void error(const char *msg)
     exit(1);
 }
 
+void *getMessages(void *newSocketID)
+{
+	char messageBuffer[256];
+	int socket = *(int*)newSocketID;
+	int n;
+	while(1)
+	{
+		if (socket < 0) 
+	    {
+	        error("ERROR on accept");
+	    }
+	    memset(messageBuffer, 0, 256);
+	    //bzero(messageBuffer,256);
+	    n = read(socket,messageBuffer,255);
+
+	    if (n < 0) 
+	    {
+	        error("ERROR reading from socket");
+	    }
+
+	    printf("%s - socketID: %d\n",messageBuffer, socket);
+	    n = write(socket,"I got your message",18);
+
+	    if (n < 0) 
+	    {
+	        error("ERROR writing to socket");
+	    }
+	}
+}
+
 int main(int argc, char *argv[])
 {
-    int portNumber, socketID, newSocketID, n;
+    int portNumber, socketID, newSocketID;
     socklen_t clilentSize;
-    char messageBuffer[256];
     struct sockaddr_in server_address, client_address;
 
 
-    portNumber = 9035;
+    portNumber = 9037;
     socketID = socket(AF_INET, SOCK_STREAM, 0);
 
     if (socketID < 0)
@@ -41,31 +73,23 @@ int main(int argc, char *argv[])
         error("ERROR on binding");
     }
 
+    int i = 0;
     while (1)
     {
-	    listen(socketID,5);
+		listen(socketID,5);
 	    clilentSize = sizeof(client_address);
 	    newSocketID = accept(socketID, (struct sockaddr *)&client_address, &clilentSize);
+    	pthread_t threads;
+	    void *status;
+	    pthread_attr_t attr;
+	    pthread_attr_init(&attr);
+	    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-	    if (newSocketID < 0) 
-	    {
-	        error("ERROR on accept");
-	    }
-	    bzero(messageBuffer,256);
-	    n = read(newSocketID,messageBuffer,255);
-
-	    if (n < 0) 
-	    {
-	        error("ERROR reading from socket");
-	    }
-
-	    printf("Here is the message: %s\n",messageBuffer);
-	    n = write(newSocketID,"I got your message",18);
-
-	    if (n < 0) 
-	    {
-	        error("ERROR writing to socket");
-	    }
+	    clientThreads[i] = threads;
+		// Spawn the listen/receive deamons
+		printf("Starting new thread with ID: %d\n", newSocketID);
+		pthread_create(&threads, &attr, getMessages, (void *)&newSocketID);
+		//pthread_create(&threads[1], &attr, listener, NULL);
 	}
     
     close(newSocketID);

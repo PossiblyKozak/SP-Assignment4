@@ -42,7 +42,11 @@ pthread_mutex_t mutexsum = PTHREAD_MUTEX_INITIALIZER;
 // current IP: 10.113.16.20
 int main(int argc, char *argv[])
 {
-	char userID[30], serverName[30];
+	char userID[20], serverName[30];
+	int len;
+    int result;
+    char buf[256];
+    struct sockaddr_in address;
 
 	if ((argc == 3 && (!parseArgument(userID, serverName, argv[1]) || !parseArgument(userID, serverName, argv[2]))) || argc != 3)
 	{
@@ -52,39 +56,44 @@ int main(int argc, char *argv[])
 	{
 		printf("UserID: %s\n", userID);
 		printf("Server Name: %s\n", serverName);
-	}
 
+		// Make socket
+	    sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-	int len;
-    int result;
-    char buf[256];
-    struct sockaddr_in address;
+	    // attr
+	    address.sin_family = AF_INET;
+	    address.sin_addr.s_addr = inet_addr("127.0.0.1");
+	    address.sin_port = htons(9037);
 
-    // Make socket
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	    len = sizeof(address);
 
-    // attr
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr("127.0.0.1");
-    address.sin_port = htons(9035);
+	    // Make connection
+	    result = connect(sockfd, (struct sockaddr *)&address, len);
 
-    len = sizeof(address);
+	    printf("\nBuilding connection\n");
 
-    // Make connection
-    result = connect(sockfd, (struct sockaddr *)&address, len);
+	    if(result == -1)
+	    {
+	        perror("Connection failed, try again.\n");
+	        exit(1);
+	    }
+	    else
+	    {
+	        printf("Success connecting\n");
+    	    pthread_t threads[2];
+		    void *status;
+		    pthread_attr_t attr;
+		    pthread_attr_init(&attr);
+		    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-    printf("\n\nBuilding connection\n\n");
+		    // Spawn the listen/receive deamons
+		    pthread_create(&threads[0], &attr, sendmessage, (void *)userID);
+		    pthread_create(&threads[1], &attr, listener, NULL);
+		    while(!done);
+	    }
 
-    if(result == -1)
-    {
-        perror("\nConnection failed, try again.\n");
-        exit(1);
-    }
-    else
-    {
-        printf("\n\nSuccess connecting\n");
-    }
-
+	    //sendmessage(userID);
+	}	
 
     /*
     pthread_t threads[2];
@@ -96,14 +105,8 @@ int main(int argc, char *argv[])
     // Spawn the listen/receive deamons
     pthread_create(&threads[0], &attr, sendmessage, (void *)userID);
     pthread_create(&threads[1], &attr, listener, NULL);
-	*/
-    sendmessage(userID);
+	*/    
     // Keep alive until finish condition is done
-    while(!done)
-    {
-    	
-    }
-
 	return 0;
 }
 
@@ -141,7 +144,7 @@ void *sendmessage(void *name)
     int bufsize=maxx-4;
     char *buffer=malloc(bufsize);
     printf("entered sendmessage\n");
-    while(1)
+    while(!done)
     {
         /*bzero(str,80);
         bzero(msg,100);
@@ -150,6 +153,7 @@ void *sendmessage(void *name)
 
         // Get user's message
         fgets(str, 80, stdin);
+        str[strlen(str) - 1] = 0;
 
         // Build the message: "name: message"
         strcpy(msg,name);
@@ -157,7 +161,7 @@ void *sendmessage(void *name)
         strncat(msg,str,100-strlen(str));
 
         // Check for quiting
-        if(strcmp(str,"exit")==0)
+        if(strcmp(str,">>bye<<")==0)
         {
 
             done = 1;
@@ -165,7 +169,6 @@ void *sendmessage(void *name)
             // Clean up
             pthread_mutex_destroy(&mutexsum);
             pthread_exit(NULL);
-            close(sockfd);
         }    
 
         // Send message to server
@@ -191,20 +194,21 @@ void *listener()
     char str[80];
     int bufsize=maxx-4;
     char *buffer=malloc(bufsize);
-
-    while(1)
+    printf("entered listner\n");
+    while(!done)
     {
-        bzero(buffer,bufsize);
+        //bzero(buffer,bufsize);
         //Receive message from server
         read(sockfd,buffer,bufsize);
 
         //Print on own terminal
-        printf("%s", buffer);
+        if (buffer != NULL)
+        	printf("%s", buffer);
 
         // scroll the top if the line number exceed height
         pthread_mutex_lock (&mutexsum);
-        if(line!=maxy/2-2)
-            line++;
+/*        if(line!=maxy/2-2)
+            line++;*/
         pthread_mutex_unlock (&mutexsum);
     }
 }
