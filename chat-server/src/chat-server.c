@@ -10,6 +10,8 @@
 #include <pthread.h>
 
 pthread_t clientThreads[10];
+int activeSockets[10];
+int activeSocketCount = 0;
 
 void error(const char *msg)
 {
@@ -19,7 +21,7 @@ void error(const char *msg)
 
 void *getMessages(void *newSocketID)
 {
-	char messageBuffer[256];
+	char messageBuffer[80];
 	int socket = *(int*)newSocketID;
 	int n;
 	while(1)
@@ -28,22 +30,32 @@ void *getMessages(void *newSocketID)
 	    {
 	        error("ERROR on accept");
 	    }
-	    memset(messageBuffer, 0, 256);
+	    memset(messageBuffer, 0, 80);
 	    //bzero(messageBuffer,256);
-	    n = read(socket,messageBuffer,255);
-
+	    n = read(socket,messageBuffer,79);
 	    if (n < 0) 
 	    {
 	        error("ERROR reading from socket");
 	    }
 
-	    printf("%s - socketID: %d\n",messageBuffer, socket);
-	    n = write(socket,"I got your message",18);
-
-	    if (n < 0) 
+	    if (messageBuffer[0] != 0)
 	    {
-	        error("ERROR writing to socket");
-	    }
+		    printf("%s\n",messageBuffer);
+		    for (int i = 0; i < activeSocketCount; i++)
+		    {
+		    	if (activeSockets[i] != socket)
+		    	{
+		    		messageBuffer[25] = '<';
+		    		messageBuffer[26] = '<';
+		    		write(activeSockets[i], messageBuffer, 80);
+		    	}
+		    }	    
+		    if (n < 0) 
+		    {
+		        error("ERROR writing to socket");
+		    }
+		}
+	    //n = write(socket,"I got your message",18)
 	}
 }
 
@@ -62,7 +74,7 @@ int main(int argc, char *argv[])
     	error("There was an error opening the socket");
     }
 
-    bzero((char *) &server_address, sizeof(server_address));
+    memset((char *) &server_address, 0, sizeof(server_address));
 
     server_address.sin_family = AF_INET;
     server_address.sin_addr.s_addr = INADDR_ANY;
@@ -70,11 +82,12 @@ int main(int argc, char *argv[])
 
     if (bind(socketID, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) 
     {
-        error("ERROR on binding");
+    	close(socketID);
+    	if (bind(socketID, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) 
+        	error("ERROR on binding");
     }
 
-    int i = 0;
-    while (1)
+    do    
     {
 		listen(socketID,5);
 	    clilentSize = sizeof(client_address);
@@ -85,12 +98,15 @@ int main(int argc, char *argv[])
 	    pthread_attr_init(&attr);
 	    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-	    clientThreads[i] = threads;
+	    clientThreads[activeSocketCount] = threads;
+	    activeSockets[activeSocketCount] = newSocketID;
+
 		// Spawn the listen/receive deamons
 		printf("Starting new thread with ID: %d\n", newSocketID);
 		pthread_create(&threads, &attr, getMessages, (void *)&newSocketID);
 		//pthread_create(&threads[1], &attr, listener, NULL);
-	}
+		activeSocketCount++;
+	} while (activeSocketCount > 0)
     
     close(newSocketID);
     close(socketID);

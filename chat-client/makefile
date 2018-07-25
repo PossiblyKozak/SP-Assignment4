@@ -12,10 +12,10 @@ SRC_DIR = ./src
 INC_DIR = ./inc
 
 TARGET = ${BIN_DIR}/chat-client
-OBJS = ${OBJ_DIR}/chat-client.o -lpthread
+OBJS = ${OBJ_DIR}/chat-client.o -lpthread -lncurses
 
 CC = cc
-CC_FLAGS = -I${INC_DIR} -g -pthread
+CC_FLAGS = -I${INC_DIR} -g -pthread -lncurses
 
 # FINAL BINARY Target
 ${TARGET} : ${OBJS}
