@@ -30,18 +30,23 @@
 #include <time.h>
 #include <signal.h>
 
+#define INPUT_LINE 17
+#define MAX_MESSAGES 13
+#define MAX_MESSAGE_LENGTH 80
+
 // Prototypes
 bool parseArgument(char *userID, char *serverName, char *argv);
 void *sendmessage(void *name);
 void *get_in_addr(struct sockaddr *sa);
 void *listener();
 
+char messageQueue[MAX_MESSAGES][MAX_MESSAGE_LENGTH];
 int sockfd;
 int done = 0;
 WINDOW *inputWindow;
 WINDOW *logWindow;
-int line=1; // Line position of top
-int input=1; // Line position of top
+int line = 2; // Line position of top
+int input = 1; // Line position of top
 int maxx,maxy; // Screen dimensions
 pthread_mutex_t mutexsum = PTHREAD_MUTEX_INITIALIZER;  
 
@@ -137,6 +142,30 @@ bool parseArgument(char *userID, char *serverName, char *argv)
 	return success;
 }
 
+int getOutputPos()
+{
+    if (line < MAX_MESSAGES)
+    {
+        line++;
+    }
+    return line;
+}
+
+void printMessages()
+{
+    for(int i = 0; i < MAX_MESSAGES; i++)
+    {
+        mvprintw(i+2, 0, "%s", messageQueue[i]);
+    }
+}
+
+void addMessageToDisplay(char* msg)
+{
+    memmove(messageQueue[0], messageQueue[1], sizeof(messageQueue) - sizeof(messageQueue[0]));
+    strcpy(messageQueue[MAX_MESSAGES - 1], msg);
+    printMessages();
+}
+
 void *sendmessage(void *oldName)
 {
     char name[5];
@@ -161,23 +190,25 @@ void *sendmessage(void *oldName)
         // Get user's message
         char newChar = -1;
         int currIndex = 0;
-        mvprintw(10, 81, "|");  
+        move(INPUT_LINE,0);
+        clrtoeol();
+        move(INPUT_LINE,0);
         while (newChar != 10)
         {
             newChar = getch();
             if (newChar == 127)
             {
-                str[--currIndex] = 0;    
-                move(10, 0);
-                clrtoeol();  
+                str[--currIndex] = 0;                    
             }
-            else if (newChar != -1)
+            else if (newChar != -1 && currIndex < 80)
             {
                 str[currIndex++] = newChar;
             }
-            mvprintw(10, 0, "%s", str, currIndex);  
+            move(INPUT_LINE, 0);
+            clrtoeol();  
+            mvprintw(INPUT_LINE, 0, "%s", str, currIndex);  
 
-            move(10, strlen(str));          
+            move(INPUT_LINE, strlen(str));          
         }
 
         int c;        
@@ -215,21 +246,18 @@ void *sendmessage(void *oldName)
         if (strlen(str) > 41)
         {   
             int i = 40;
-            bool isTooBig = false;
-            if (strlen(str) > 40)
+            bool noSplit = false;
+            while ((str[i] != ' ' && i > 0)) 
             {
-                while ((str[i] != ' ' && i > 0)) 
+                if (strlen(str) - i >= 40)
                 {
-                    if (strlen(str) - i <= 40)
-                    {
-                        isTooBig = true;
-                        i = 40;
-                        break;
-                    }
-                    i--;
+                    noSplit = true;
+                    i = 40;
+                    break;
                 }
+                i--;
             }
-            if (isTooBig)
+            if (noSplit)
             {
                 strncpy(str1, str, i);
                 strncpy(str2, str + i, strlen(str) - i);
@@ -247,12 +275,12 @@ void *sendmessage(void *oldName)
 
             sprintf(msg, "%-16s [%5s] >> %-40s %9s", ip, name, str1, timeString);
             write(sockfd,msg,strlen(msg));
-            mvprintw(0, 0, "%s\n", msg); 
+            addMessageToDisplay(msg);
 
             memset(msg, 0, 100);
             sprintf(msg, "%-16s [%5s] >> %-40s %9s", ip, name, str2, timeString);
             write(sockfd,msg,strlen(msg));  
-            mvprintw(1, 0, "%s\n", msg);           
+            addMessageToDisplay(msg);         
         }
         else
         {
@@ -273,7 +301,7 @@ void *sendmessage(void *oldName)
 
             // Send message to server
             write(sockfd,msg,strlen(msg));
-            mvprintw(0, 0, "%s\n", msg); 
+            addMessageToDisplay(msg);
         }
 
         // write it in chat window (top)
@@ -306,15 +334,16 @@ void *listener()
             int n = send(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL);
             if (n == -1)
             {
-                printf("The connestion with the server has been broken. No messages can be sent.\n");
+                addMessageToDisplay("The connestion with the server has been broken. No messages can be sent.");
                 close(sockfd);
+                done = 1;
                 break;
             }
             else
             {
                 if (buffer[0] != 0)
                 {
-                    printf("%s\n", buffer);    
+                    addMessageToDisplay(buffer);
                 }                
             }            
         }
