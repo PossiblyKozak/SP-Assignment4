@@ -8,10 +8,16 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <errno.h>
+#include <stdbool.h>
 
+#define _GNU_SOURCE
+
+char *activeUsernames[10];
 pthread_t clientThreads[10];
 int activeSockets[10];
 int activeSocketCount = 0;
+bool hasAnyoneConnected = false;
 
 void error(const char *msg)
 {
@@ -26,12 +32,7 @@ void *getMessages(void *newSocketID)
 	int n;
 	while(1)
 	{
-		if (socket < 0) 
-	    {
-	        error("ERROR on accept");
-	    }
 	    memset(messageBuffer, 0, 80);
-	    //bzero(messageBuffer,256);
 	    n = read(socket,messageBuffer,79);
 	    if (n < 0) 
 	    {
@@ -43,30 +44,95 @@ void *getMessages(void *newSocketID)
 		    printf("%s\n",messageBuffer);
 		    for (int i = 0; i < activeSocketCount; i++)
 		    {
+		    	if (strstr(messageBuffer, ">>bye<<") != NULL)
+		    	{
+		    		printf("User at socket %d left the chatroom\n", socket);
+		    		activeSocketCount--;
+		    		pthread_exit(NULL);
+		    	}
 		    	if (activeSockets[i] != socket)
 		    	{
 		    		messageBuffer[25] = '<';
 		    		messageBuffer[26] = '<';
-		    		write(activeSockets[i], messageBuffer, 80);
+		    		n = write(activeSockets[i], messageBuffer, 80);
 		    	}
+			    if (n < 0) 
+			    {
+			        error("ERROR writing to socket");
+			    }
 		    }	    
-		    if (n < 0) 
-		    {
-		        error("ERROR writing to socket");
-		    }
 		}
-	    //n = write(socket,"I got your message",18)
+	}
+}
+
+void *getNewClients(void *tmpSocketID)
+{
+	int socketID = *(int*)tmpSocketID;
+	struct sockaddr_in client_address;
+	socklen_t clilentSize;
+	int newSocketID;
+
+	while (activeSocketCount > 0 || !hasAnyoneConnected )
+    {
+		listen(socketID,5);
+	    clilentSize = sizeof(client_address);
+	    newSocketID = accept(socketID, (struct sockaddr *)&client_address, &clilentSize);
+		
+	    if (newSocketID >= 0)
+	    {
+	    	printf("Someone connected!\n");
+	    	hasAnyoneConnected = true;
+	    	char userName[80], message[80];
+	    	memset(message, 0, 80);	   		
+			while(1)
+			{
+			    memset(userName, 0, 80);
+			    //Receive message from server
+			    read(newSocketID,userName,sizeof(userName));
+
+			    //Print on own terminal
+			    if (userName != NULL)
+			    {
+			        break;  
+			    }
+			}
+	    	sprintf(message, "User %s entered the chatroom.", userName);
+
+	    	for (int i = 0; i < activeSocketCount; i++)
+		    {
+		    	if (activeSockets[i] != socketID)
+		    	{
+		    		if (write(activeSockets[i], message, sizeof(message)) < 0)
+		    		{
+		  				error("ERROR writing to socket");
+		    		}
+		    	}
+		    }
+
+	    	pthread_t threads;
+		    pthread_attr_t attr;
+		    pthread_attr_init(&attr);
+		    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
+		    clientThreads[activeSocketCount] = threads;
+		    activeSockets[activeSocketCount] = newSocketID;
+
+			printf("Starting new thread with ID: %d\n", newSocketID);
+			pthread_create(&threads, &attr, getMessages, (void *)&newSocketID);
+			activeSocketCount++;
+	    }
 	}
 }
 
 int main(int argc, char *argv[])
 {
-    int portNumber, socketID, newSocketID;
-    socklen_t clilentSize;
-    struct sockaddr_in server_address, client_address;
+    int portNumber, socketID;
+    struct sockaddr_in server_address;
 
+///////////////////////
+    portNumber = 9030;
+///////////////////////
 
-    portNumber = 9037;
     socketID = socket(AF_INET, SOCK_STREAM, 0);
 
     if (socketID < 0)
@@ -87,28 +153,15 @@ int main(int argc, char *argv[])
         	error("ERROR on binding");
     }
 
-    do    
-    {
-		listen(socketID,5);
-	    clilentSize = sizeof(client_address);
-	    newSocketID = accept(socketID, (struct sockaddr *)&client_address, &clilentSize);
-    	pthread_t threads;
-	    void *status;
-	    pthread_attr_t attr;
-	    pthread_attr_init(&attr);
-	    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+	pthread_t threads;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);	
+	pthread_create(&threads, &attr, getNewClients, (void *)&socketID);
 
-	    clientThreads[activeSocketCount] = threads;
-	    activeSockets[activeSocketCount] = newSocketID;
-
-		// Spawn the listen/receive deamons
-		printf("Starting new thread with ID: %d\n", newSocketID);
-		pthread_create(&threads, &attr, getMessages, (void *)&newSocketID);
-		//pthread_create(&threads[1], &attr, listener, NULL);
-		activeSocketCount++;
-	} while (activeSocketCount > 0)
+	while (activeSocketCount > 0 || !hasAnyoneConnected){sleep(1);};
+	pthread_cancel(threads);
     
-    close(newSocketID);
     close(socketID);
     return 0;
 }

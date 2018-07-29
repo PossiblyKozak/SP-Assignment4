@@ -38,8 +38,8 @@ void *listener();
 
 int sockfd;
 int done = 0;
-WINDOW *top;
-WINDOW *bottom;
+WINDOW *inputWindow;
+WINDOW *logWindow;
 int line=1; // Line position of top
 int input=1; // Line position of top
 int maxx,maxy; // Screen dimensions
@@ -49,6 +49,7 @@ pthread_mutex_t mutexsum = PTHREAD_MUTEX_INITIALIZER;
 // current IP: 10.113.16.20
 int main(int argc, char *argv[])
 {
+    initscr();
 	char userID[20], serverName[30];
 	int len;
     int result;
@@ -61,17 +62,19 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		printf("UserID: %s\n", userID);
-		printf("Server Name: %s\n", serverName);
+        
+		printw("UserID: %s\t", userID);
+		printw("Server Name: %s\n", serverName);
 
 		// Make socket
 	    sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
 	    // attr
 	    address.sin_family = AF_INET;
-	    address.sin_addr.s_addr = inet_addr("127.0.0.1");
-	    address.sin_port = htons(9037);
-
+	    address.sin_addr.s_addr = inet_addr(serverName); //127.0.0.1 for local connections
+        ///////////////////////////////
+	    address.sin_port = htons(9030);
+        ///////////////////////////////
 	    len = sizeof(address);
 
 	    // Make connection
@@ -80,10 +83,10 @@ int main(int argc, char *argv[])
 	    if(result == -1)
 	    {
 	        perror("Connection failed, try again.\n");
-	        exit(1);
 	    }
 	    else
 	    {
+            write(sockfd,userID,strlen(userID));
     	    pthread_t threads[2];
 		    void *status;
 		    pthread_attr_t attr;
@@ -111,6 +114,7 @@ int main(int argc, char *argv[])
     pthread_create(&threads[1], &attr, listener, NULL);
 	*/    
     // Keep alive until finish condition is done
+    endwin();
 	return 0;
 }
 
@@ -144,7 +148,7 @@ void *sendmessage(void *oldName)
     int bufsize=maxx-4;
     char *buffer=malloc(bufsize);
     char str1[41];    
-    char str2[41];
+    char str2[41];    
     while(!done)
     {
         memset(str, 0, 80);
@@ -153,15 +157,30 @@ void *sendmessage(void *oldName)
         memset(msg, 0, 100);
         memset(ip, 0, 20);
         memset(timeString, 0, 20);
-        /*bzero(str,80);
-        bzero(msg,100);
-        bzero(buffer,bufsize);
-        printf("completed bzero\n");*/
 
         // Get user's message
-        fgets(str, 81, stdin);
-        int c;        
+        char newChar = -1;
+        int currIndex = 0;
+        mvprintw(10, 81, "|");  
+        while (newChar != 10)
+        {
+            newChar = getch();
+            if (newChar == 127)
+            {
+                str[--currIndex] = 0;    
+                move(10, 0);
+                clrtoeol();  
+            }
+            else if (newChar != -1)
+            {
+                str[currIndex++] = newChar;
+            }
+            mvprintw(10, 0, "%s", str, currIndex);  
 
+            move(10, strlen(str));          
+        }
+
+        int c;        
         //https://stackoverflow.com/questions/1570511/c-code-to-get-the-ip-address
         int fd;
         struct ifreq ifr;
@@ -197,10 +216,6 @@ void *sendmessage(void *oldName)
         {   
             int i = 40;
             bool isTooBig = false;
-            if (strlen(str) == 80)
-            {
-                while ((c = fgetc(stdin)) != '\n' && c != EOF);
-            }
             if (strlen(str) > 40)
             {
                 while ((str[i] != ' ' && i > 0)) 
@@ -232,12 +247,12 @@ void *sendmessage(void *oldName)
 
             sprintf(msg, "%-16s [%5s] >> %-40s %9s", ip, name, str1, timeString);
             write(sockfd,msg,strlen(msg));
-            printf("%s\n", msg); 
+            mvprintw(0, 0, "%s\n", msg); 
 
             memset(msg, 0, 100);
             sprintf(msg, "%-16s [%5s] >> %-40s %9s", ip, name, str2, timeString);
             write(sockfd,msg,strlen(msg));  
-            printf("%s\n", msg);           
+            mvprintw(1, 0, "%s\n", msg);           
         }
         else
         {
@@ -250,13 +265,15 @@ void *sendmessage(void *oldName)
             {
                 done = 1;
                 // Clean up
+                sprintf(msg, ">>bye<<%s", (char*)oldName);
+                write(sockfd,msg,strlen(msg));
                 pthread_mutex_destroy(&mutexsum);
                 pthread_exit(NULL);
             }    
 
             // Send message to server
             write(sockfd,msg,strlen(msg));
-            printf("%s\n", msg); 
+            mvprintw(0, 0, "%s\n", msg); 
         }
 
         // write it in chat window (top)
@@ -283,12 +300,23 @@ void *listener()
     {
         memset(buffer,0,80);
         //Receive message from server
-        read(sockfd,buffer,bufsize);
-
         //Print on own terminal
-        if (buffer != NULL)
+        if (!(read(sockfd,buffer,bufsize) < 0) && buffer != NULL)
         {
-            printf("%s\n", buffer);    
+            int n = send(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL);
+            if (n == -1)
+            {
+                printf("The connestion with the server has been broken. No messages can be sent.\n");
+                close(sockfd);
+                break;
+            }
+            else
+            {
+                if (buffer[0] != 0)
+                {
+                    printf("%s\n", buffer);    
+                }                
+            }            
         }
         // scroll the top if the line number exceed height
         //pthread_mutex_lock (&mutexsum);
