@@ -36,9 +36,10 @@
 
 // Prototypes
 bool parseArgument(char *userID, char *serverName, char *argv);
-void *sendmessage(void *name);
+void *getSendMessage(void *name);
 void *get_in_addr(struct sockaddr *sa);
 void *listener();
+void sendMessage(int socketID, char* ip, char* name, char* str, char* timeString);
 
 char messageQueue[MAX_MESSAGES][MAX_MESSAGE_LENGTH];
 int sockfd;
@@ -99,26 +100,11 @@ int main(int argc, char *argv[])
 		    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
 		    // Spawn the listen/receive deamons
-		    pthread_create(&threads[0], &attr, sendmessage, (void *)userID);
+		    pthread_create(&threads[0], &attr, getSendMessage, (void *)userID);
 		    pthread_create(&threads[1], &attr, listener, NULL);
 		    while(!done);
 	    }
-
-	    //sendmessage(userID);
 	}	
-
-    /*
-    pthread_t threads[2];
-    void *status;
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-
-    // Spawn the listen/receive deamons
-    pthread_create(&threads[0], &attr, sendmessage, (void *)userID);
-    pthread_create(&threads[1], &attr, listener, NULL);
-	*/    
-    // Keep alive until finish condition is done
     endwin();
 	return 0;
 }
@@ -155,8 +141,12 @@ void printMessages()
 {
     for(int i = 0; i < MAX_MESSAGES; i++)
     {
+        move(i+2, 0);
+        clrtoeol();
         mvprintw(i+2, 0, "%s", messageQueue[i]);
     }
+    refresh();
+    move(INPUT_LINE, 0);
 }
 
 void addMessageToDisplay(char* msg)
@@ -166,14 +156,27 @@ void addMessageToDisplay(char* msg)
     printMessages();
 }
 
-void *sendmessage(void *oldName)
+void getIP(char *ip)
+{
+    //https://stackoverflow.com/questions/1570511/c-code-to-get-the-ip-address
+    int fd;
+    struct ifreq ifr;
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    ifr.ifr_addr.sa_family = AF_INET;
+    snprintf(ifr.ifr_name, IFNAMSIZ, "ens33");
+    ioctl(fd, SIOCGIFADDR, &ifr);
+    /* and more importantly */
+    sprintf(ip, "%s", inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr));
+    close(fd);
+}
+
+void *getSendMessage(void *oldName)
 {
     char name[5];
     strncpy(name, oldName, 5);
     char str[81];
     char ip[20];
     char timeString[11];
-    char msg[100];
     int bufsize=maxx-4;
     char *buffer=malloc(bufsize);
     char str1[41];    
@@ -183,7 +186,6 @@ void *sendmessage(void *oldName)
         memset(str, 0, 80);
         memset(str1, 0, 41);
         memset(str2, 0, 41);
-        memset(msg, 0, 100);
         memset(ip, 0, 20);
         memset(timeString, 0, 20);
 
@@ -193,6 +195,7 @@ void *sendmessage(void *oldName)
         move(INPUT_LINE,0);
         clrtoeol();
         move(INPUT_LINE,0);
+        flushinp();
         while (newChar != 10)
         {
             newChar = getch();
@@ -210,18 +213,11 @@ void *sendmessage(void *oldName)
 
             move(INPUT_LINE, strlen(str));          
         }
+        mvprintw(INPUT_LINE + 1, 0, "Sending message...");
 
+        getIP(ip);
         int c;        
-        //https://stackoverflow.com/questions/1570511/c-code-to-get-the-ip-address
-        int fd;
-        struct ifreq ifr;
-        fd = socket(AF_INET, SOCK_DGRAM, 0);
-        ifr.ifr_addr.sa_family = AF_INET;
-        snprintf(ifr.ifr_name, IFNAMSIZ, "ens33");
-        ioctl(fd, SIOCGIFADDR, &ifr);
-        /* and more importantly */
-        sprintf(ip, "%s", inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr));
-        close(fd);
+
         //printf("%s\n", ip);
 
         // Time
@@ -269,44 +265,35 @@ void *sendmessage(void *oldName)
                 str2[strlen(str2) - 1] = 0;
             }
 
-
             // Build the message: "name: message"
-            memset(msg, 0, 100);
-
-            sprintf(msg, "%-16s [%5s] >> %-40s %9s", ip, name, str1, timeString);
-            write(sockfd,msg,strlen(msg));
-            addMessageToDisplay(msg);
-
-            memset(msg, 0, 100);
-            sprintf(msg, "%-16s [%5s] >> %-40s %9s", ip, name, str2, timeString);
-            write(sockfd,msg,strlen(msg));  
-            addMessageToDisplay(msg);         
+            sendMessage(sockfd, ip, name, str1, timeString);
+            sendMessage(sockfd, ip, name, str2, timeString);      
         }
         else
         {
             str[strlen(str) - 1] = 0;
-            memset(msg, 0, 100);
-            sprintf(msg, "%-16s [%5s] >> %-40s %9s", ip, name, str, timeString);
-
-            // Check for quiting
             if(strcmp(str,">>bye<<")==0)
             {
                 done = 1;
-                // Clean up
-                sprintf(msg, ">>bye<<%s", (char*)oldName);
-                write(sockfd,msg,strlen(msg));
+                memset(str, 0, 80);
+                sprintf(str, ">>bye<<%s", (char*)oldName);
+                write(sockfd,str,strlen(str));
                 pthread_mutex_destroy(&mutexsum);
                 pthread_exit(NULL);
             }    
 
-            // Send message to server
-            write(sockfd,msg,strlen(msg));
-            addMessageToDisplay(msg);
+            sendMessage(sockfd, ip, name, str, timeString);
         }
-
-        // write it in chat window (top)
-               
     }
+}
+
+void sendMessage(int socketID, char* ip, char* name, char* str, char* timeString)
+{
+    char msg[80];
+    memset(msg, 0, 80);
+    sprintf(msg, "%-16s [%-5s] >> %-40s %9s", ip, name, str, timeString);
+    write(socketID,msg,strlen(msg));
+    addMessageToDisplay(msg);    
 }
 
 void *get_in_addr(struct sockaddr *sa)
@@ -347,10 +334,5 @@ void *listener()
                 }                
             }            
         }
-        // scroll the top if the line number exceed height
-        //pthread_mutex_lock (&mutexsum);
-/*        if(line!=maxy/2-2)
-            line++;*/
-        //pthread_mutex_unlock (&mutexsum);
     }
 }
