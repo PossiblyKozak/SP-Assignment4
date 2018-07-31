@@ -40,16 +40,19 @@
 void getIP(char *ip);
 void getTime(char* timeString);
 void getUserInput(char* str);
+void printHeader();
 void addMessageToDisplay(char* msg);
 int getOutputPos();
+void setUserName(char* str, char* name);
 void printMessages();
 void splitMessage(char* str, char* str1, char* str2);
 void sendMessage(int socketID, char* ip, char* name, char* str, char* timeString);
-void *getSendMessage(void *oldName);
+void *getSendMessage();
 void *listener();
-bool parseArgument(char *userID, char *serverName, char *argv);
+bool parseArgument(char *argv);
 
 // Globals
+char gUserName[20], gServerName[20];
 char messageQueue[MAX_MESSAGES][MAX_MESSAGE_LENGTH];
 int sockfd;
 int done = 0;
@@ -109,6 +112,13 @@ void getUserInput(char* str)
     }
 }
 
+void printHeader()
+{
+    move(0, 0);
+    clrtoeol();
+    printw("UserID: %-20s\tServer Name: %s\n", gUserName, gServerName);
+}
+
 void addMessageToDisplay(char* msg)
 {
     memmove(messageQueue[0], messageQueue[1], sizeof(messageQueue) - sizeof(messageQueue[0]));
@@ -123,6 +133,25 @@ int getOutputPos()
         line++;
     }
     return line;
+}
+
+void setUserName(char* str, char* name)
+{
+    if (strlen(&str[6]) > 20)
+    {
+        addMessageToDisplay("/name has a maximum name size of 20 characters, try again.");                    
+    }
+    else if (strlen(&str[6]) > 0)
+    {
+        write(sockfd,str,strlen(str));
+        strcpy(gUserName, &str[6]);
+        strncpy(name, gUserName, 5);
+        printHeader();
+    }
+    else
+    {
+        addMessageToDisplay("Invalid username, try again.");
+    }
 }
 
 void printMessages()
@@ -173,10 +202,47 @@ void sendMessage(int socketID, char* ip, char* name, char* str, char* timeString
     addMessageToDisplay(msg);    
 }
 
-void *getSendMessage(void *oldName)
+void endGet()
+{
+    done = 1;
+    write(sockfd,">>bye<<",strlen(">>bye<<"));
+    pthread_mutex_destroy(&mutexsum);
+    pthread_exit(NULL);
+}
+
+void interpretCommand(char* str, char* name)
+{
+    if(strcmp(str,"/users")==0)
+    {
+        write(sockfd,str,strlen(str));
+    }    
+    else if(strstr(str,"/name ") != NULL)
+    {
+        setUserName(str, name);
+    }    
+    else if(strcmp(str, "/clear") == 0)
+    {
+        memset(messageQueue, 0, sizeof(messageQueue));
+        printMessages();
+    }
+    else if(strcmp(str, "/exit") == 0)
+    {
+        endGet();
+    }
+    else if(strcmp(str, "/?") == 0)
+    {
+        addMessageToDisplay("Valid Commands: /users | /clear | /name <new-name> | /? | /exit");
+    }
+    else
+    {
+        addMessageToDisplay("Invalid Command: type /? for a list of commands");
+    }    
+}
+
+void *getSendMessage()
 {
     char str[81], str1[41], str2[41], ip[20], name[5], timeString[11];
-    strncpy(name, oldName, 5);
+    strncpy(name, gUserName, 5);
     while(!done)
     {
         memset(str, 0, 80);
@@ -191,7 +257,15 @@ void *getSendMessage(void *oldName)
         getIP(ip);
         getTime(timeString);
 
-        if (strlen(str) > 40)
+        if(strcmp(str,">>bye<<")==0)
+        {
+            endGet();
+        }    
+        if (str[0] == '/')
+        {
+            interpretCommand(str, name);
+        }
+        else if (strlen(str) > 40)
         {   
             splitMessage(str, str1, str2);
             sendMessage(sockfd, ip, name, str1, timeString);
@@ -199,23 +273,7 @@ void *getSendMessage(void *oldName)
         }
         else
         {
-            if(strcmp(str,">>bye<<")==0)
-            {
-                done = 1;
-                memset(str, 0, 80);
-                sprintf(str, ">>bye<<%s", (char*)oldName);
-                write(sockfd,str,strlen(str));
-                pthread_mutex_destroy(&mutexsum);
-                pthread_exit(NULL);
-            }    
-            else if(strcmp(str,"/users")==0)
-            {
-                write(sockfd,str,strlen(str));
-            }    
-            else
-            {
-                sendMessage(sockfd, ip, name, str, timeString);                
-            }
+            sendMessage(sockfd, ip, name, str, timeString);                
         }
     }
 }
@@ -249,16 +307,16 @@ void *listener()
     }
 }
 
-bool parseArgument(char *userID, char *serverName, char *argv)
+bool parseArgument(char *argv)
 {
     bool success = true;
     if (strstr(argv, "-user") != NULL)
     {
-        strncpy(userID, argv + 5, 20);
+        strncpy(gUserName, argv + 5, 20);
     }
     else if (strstr(argv, "-server") != NULL)
     {
-        strcpy(serverName, argv + 7);
+        strcpy(gServerName, argv + 7);
     }
     else
     {
@@ -271,20 +329,18 @@ bool parseArgument(char *userID, char *serverName, char *argv)
 int main(int argc, char *argv[])
 {
     initscr();
-    keypad(stdscr, TRUE); 
-    char userID[20], serverName[30];
+    keypad(stdscr, TRUE);     
     int len;
     int result;    
 
-    if ((argc == 3 && (!parseArgument(userID, serverName, argv[1]) || !parseArgument(userID, serverName, argv[2]))) || argc != 3)
+    if ((argc == 3 && (!parseArgument(argv[1]) || !parseArgument(argv[2]))) || argc != 3)
     {
         printf("Proper Usage: chat-client -user<userID> -server<server name>\n");
     }
     else
     {
         
-        printw("UserID: %s\t", userID);
-        printw("Server Name: %s\n", serverName);
+        printHeader();
 
         // Make socket
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -292,7 +348,7 @@ int main(int argc, char *argv[])
         // attr
         struct sockaddr_in address;
         address.sin_family = AF_INET;
-        address.sin_addr.s_addr = inet_addr(serverName); //127.0.0.1 for local connections
+        address.sin_addr.s_addr = inet_addr(gServerName); //127.0.0.1 for local connections
         address.sin_port = htons(CURR_SOCKET);
         
         // Make connection
@@ -302,7 +358,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-            write(sockfd,userID,strlen(userID));
+            write(sockfd,gUserName,strlen(gUserName));
             pthread_t threads[2];
             void *status;
             pthread_attr_t attr;
@@ -310,7 +366,7 @@ int main(int argc, char *argv[])
             pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
             // Spawn the listen/receive deamons
-            pthread_create(&threads[0], &attr, getSendMessage, (void *)userID);
+            pthread_create(&threads[0], &attr, getSendMessage, (void *)gUserName);
             pthread_create(&threads[1], &attr, listener, NULL);
             while(!done);
         }

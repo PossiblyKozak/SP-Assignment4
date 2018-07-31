@@ -57,14 +57,24 @@ void sendToAllOtherSockets(int socketID, char* msg)
 	}
 }
 
+int getIndexBySocketID(int socketID)
+{
+	for (int i = 0; i < activeSocketCount; i++)
+	{
+		if (activeSockets[i] == socketID)
+			return i;
+	}
+	return -1;
+}
+
 void *getMessages(void *newSocketID)
 {
-	char messageBuffer[256];
+	char messageBuffer[80];
 	int socket = *(int*)newSocketID;
 	int n;
 	while(1)
 	{
-	    memset(messageBuffer, 0, 256);
+	    memset(messageBuffer, 0, 80);
 	    n = read(socket,messageBuffer,79);
 
 	    if (messageBuffer[0] != 0 && messageBuffer[25] == '>')
@@ -79,7 +89,7 @@ void *getMessages(void *newSocketID)
 		{
 			if (strcmp(messageBuffer, "/users") == 0)
 			{
-				memset(messageBuffer, 0, 256);
+				memset(messageBuffer, 0, 80);
 				sprintf(messageBuffer, "%d Users: ", activeSocketCount);
 				for (int i = 0; i < activeSocketCount; i++)
 				{
@@ -91,14 +101,33 @@ void *getMessages(void *newSocketID)
 				}
 				write(socket, messageBuffer, sizeof(messageBuffer));
 			}
-			if (strstr(messageBuffer, "/name") != NULL)
+			else if (strstr(messageBuffer, "/name ") != NULL)
 			{
-				
+				printf("intended name change...\n");
+				char newName[20];
+				memset(newName, 0, 20);
+				memmove(newName, &messageBuffer[6], strlen(messageBuffer) - 6);				
+				printf("%s\n", newName);
+
+				if (strlen(newName) > 0)
+				{
+					char serverMessage[80];
+
+					int socketIndex = getIndexBySocketID(socket);
+					memset(serverMessage, 0, sizeof(serverMessage));
+					sprintf(serverMessage, "[SERVER] >> User '%s' changed their name to '%s'.", activeUsernames[socketIndex], newName);
+					memset(activeUsernames[socketIndex], 0, strlen(activeUsernames[socketIndex]));					
+
+					strcpy(activeUsernames[socketIndex], newName);
+					printf("%s\n", serverMessage);
+					sendToAllOtherSockets(-1, serverMessage);
+
+				}
 			}			
 		}
 		else if (messageBuffer[0] != 0)
 		{
-			if (strstr(messageBuffer, ">>bye<<") != NULL)
+			if (strcmp(messageBuffer, ">>bye<<") == 0)
 	    	{
 	    		for (int i = 0; i < activeSocketCount; i++)
 	    		{
