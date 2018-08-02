@@ -30,11 +30,27 @@
 #include <time.h>
 #include <signal.h>
 
+//Includes add by Attila
+#include <ncurses.h>
+#include <fcntl.h>
+#include <stdarg.h>
+
 // Constants
 #define CURR_SOCKET 9030
 #define INPUT_LINE 17
 #define MAX_MESSAGES 13
 #define MAX_MESSAGE_LENGTH 80
+
+//Constants by Attila
+#define CHAT_HEIGHT 5
+#define CHAT_WIDTH COLS-2
+#define CHAT_START_X 1
+#define CHAT_START_Y LINES-5
+
+#define MESSAGE_HEIGHT LINES-4
+#define MESSAGE_WIDTH COLS
+#define MESSAGE_START_X 0
+#define MESSAGE_START_Y 0
 
 // Prototypes
 void getIP(char *ip);
@@ -59,6 +75,9 @@ int done = 0;
 int line = 2; // Line position of messages
 pthread_mutex_t mutexsum = PTHREAD_MUTEX_INITIALIZER;  
 
+//ATTTILAS GLOBALS
+WINDOW* chatWindow;
+WINDOW* messageWindow;
 
 void getIP(char *ip)
 {
@@ -83,20 +102,32 @@ void getTime(char* timeString)
     strftime(timeString, 11, "(%H:%M:%S)", currTimeInfo);
 }
 
-void getUserInput(char* str)
+void getUserInput(char* str)//EDITED HERE BY ATTILA
 {
     char newChar = -1;
     int currIndex = 0;
-    move(INPUT_LINE,0);
-    clrtoeol();
-    move(INPUT_LINE,0);
+    //move(INPUT_LINE,0); removed by Attila
+    wmove(chatWindow, 2, 3);
+    //clrtoeol(); removed by Attila
+    wclrtoeol(chatWindow);
+
+    //move(INPUT_LINE,0); removed by Attila
+    wmove(chatWindow, 2, 3);
+    box(chatWindow, 0, 0);   
+    mvwprintw(chatWindow, 2, 2, ">", currIndex); 
+
     flushinp();
     while (newChar != 10 || currIndex == 0)
     {
-        newChar = getch();
-        move(INPUT_LINE + 1, 0);
-        clrtoeol();  
-        if (newChar == 7)
+        newChar = wgetch(chatWindow);
+
+        //move(INPUT_LINE + 1, 0); removed by Attila
+        wmove(chatWindow, 2, 3);
+
+        //clrtoeol(); removed by Attila
+	wclrtoeol(chatWindow); 
+	mvwprintw(chatWindow, 2, 2, ">", currIndex); 
+        if (newChar == 127)
         {
             str[--currIndex] = 0;                    
         }
@@ -104,11 +135,18 @@ void getUserInput(char* str)
         {
             str[currIndex++] = newChar;
         }
-        move(INPUT_LINE, 0);
-        clrtoeol();  
-        mvprintw(INPUT_LINE, 0, "%s", str, currIndex);  
+        //move(INPUT_LINE, 0); removed by Attila
+        wmove(chatWindow,2, 3);
 
-        move(INPUT_LINE, strlen(str));          
+        //clrtoeol(); removed by Attila
+	wclrtoeol(chatWindow);
+
+        //mvprintw(INPUT_LINE, 0, "%s", str, currIndex); removed by Attila
+	mvwprintw(chatWindow, 2, 3, "%s", str, currIndex); 
+
+        //move(INPUT_LINE, strlen(str));removed by Attila
+	wmove(chatWindow, 2, strlen(str) + 3);  
+	box(chatWindow, 0, 0);   
     }
 }
 
@@ -122,6 +160,7 @@ void printHeader()
 void addMessageToDisplay(char* msg)
 {
     memmove(messageQueue[0], messageQueue[1], sizeof(messageQueue) - sizeof(messageQueue[0]));
+    sprintf(msg,"%-80s",msg);
     strcpy(messageQueue[MAX_MESSAGES - 1], msg);
     printMessages();
 }
@@ -144,7 +183,7 @@ void setUserName(char* str, char* name)
     else if (strlen(&str[6]) > 0)
     {
         write(sockfd,str,strlen(str));
-        strcpy(gUserName, &str[6]);
+        //strcpy(gUserName, &str[6]);
         strncpy(name, gUserName, 5);
         printHeader();
     }
@@ -154,16 +193,31 @@ void setUserName(char* str, char* name)
     }
 }
 
-void printMessages()
+void printMessages() //EDITED HERE BY ATTILA
 {
+    int x, y;
+    getyx(chatWindow, y, x);
+
     for(int i = 0; i < MAX_MESSAGES; i++)
     {
-        move(i+2, 0);
-        clrtoeol();
-        mvprintw(i+2, 0, "%s", messageQueue[i]);
+        //move(i+2, 0); Removed by Attila	
+	//wmove(messageWindow, i+2, 1);
+
+        //clrtoeol(); Removed by Attila
+	//wclrtoeol(messageWindow); 
+
+        //mvprintw(i+2, 0, "%s", messageQueue[i]); Removed by Attila
+	mvwprintw(messageWindow,i+2, 1, "%s", messageQueue[i]);
     }
-    refresh();
-    move(INPUT_LINE, 0);
+    //refresh(); Removed by Attila
+    //wrefresh(messageWindow);
+
+    //move(INPUT_LINE, 0); Removed by Attila
+    //return to getxy
+    wmove(chatWindow, y, x);
+    box(chatWindow,0,0);
+    box(messageWindow,0,0);
+    wrefresh(messageWindow);
 }
 
 void splitMessage(char* str, char* str1, char* str2)
@@ -326,12 +380,34 @@ bool parseArgument(char *argv)
     return success;
 }
 
+WINDOW* newWindow(int height, int width, int y, int x)
+{
+    WINDOW* win;
+    win = newwin(height, width, y, x);
+    box(win,0,0);
+    wmove(win,1,1);
+    wrefresh(win);
+    
+    return win;
+}
+
 int main(int argc, char *argv[])
 {
     initscr();
-    keypad(stdscr, TRUE);     
+    keypad(chatWindow, TRUE);     
     int len;
-    int result;    
+    int result;  
+    //Added by Attila below    
+    initscr();
+    cbreak();
+    noecho();
+    refresh();  
+    
+    messageWindow = newWindow(MESSAGE_HEIGHT,MESSAGE_WIDTH,MESSAGE_START_Y, MESSAGE_START_X);
+    scrollok(messageWindow, TRUE);
+
+    chatWindow = newWindow(CHAT_HEIGHT, CHAT_WIDTH, CHAT_START_Y, CHAT_START_X);
+    scrollok(chatWindow,TRUE);
 
     if ((argc == 3 && (!parseArgument(argv[1]) || !parseArgument(argv[2]))) || argc != 3)
     {
@@ -371,6 +447,7 @@ int main(int argc, char *argv[])
             while(!done);
         }
     }   
-    endwin();
+    delwin(chatWindow);//Edited by Attila, used to be just endwin();
+    delwin(messageWindow);
     return 0;
 }
