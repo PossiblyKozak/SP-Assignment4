@@ -32,16 +32,17 @@
 
 // Constants
 #define CURR_SOCKET 9030
-#define INCOMING_INPUT_LINE 2
-#define INPUT_INDENT 5
 #define MAX_MESSAGES 10
 #define MAX_MESSAGE_LENGTH 80
 #define NAME_MAX_CHARACTERS 15
+
+#define INCOMING_INPUT_LINE 2
+#define INPUT_INDENT (COLS / 2) - (MAX_MESSAGE_LENGTH / 4)
 //Constants by Attila
-#define CHAT_HEIGHT 5
+#define CHAT_HEIGHT 6
 #define CHAT_WIDTH COLS
 #define CHAT_START_X 0
-#define CHAT_START_Y LINES-5
+#define CHAT_START_Y LINES-6
 
 #define MESSAGE_HEIGHT LINES-4
 #define MESSAGE_WIDTH COLS
@@ -104,9 +105,9 @@ void getUserInput(char* str)
 {
     char newChar = -1;
     int currIndex = 0;
-    
-    wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, 0);
-    wclrtoeol(outgoingMessageWindow);
+
+    clearWindow(outgoingMessageWindow);
+
     flushinp();
     box(outgoingMessageWindow, 0, 0);
     mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT - 3, ">>", currIndex);  
@@ -114,8 +115,7 @@ void getUserInput(char* str)
 
     while (newChar != 10 || currIndex == 0)
     {        
-	    mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT - 3, ">>", currIndex);  
-	    wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, strlen(str) + INPUT_INDENT);          
+	    //wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, strlen(str) + INPUT_INDENT);          
         box(outgoingMessageWindow, 0, 0);
         newChar = wgetch(outgoingMessageWindow);
         printHeader("Outgoing Message");
@@ -127,13 +127,26 @@ void getUserInput(char* str)
         {
             str[currIndex++] = newChar;
         }
-        else if (currIndex == 80)
+        else if (currIndex >= 80)
         {
             printHeader("Max message size reached!");
         }
         wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT);
         clearWindow(outgoingMessageWindow);
-        mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT, "%s", str, currIndex);  
+        mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT - 3, ">>", currIndex);  
+        if (currIndex > 40)
+        {
+        	char str1[41], str2[41];
+        	memset(str1, 0, 41);
+        	memset(str2, 0, 41);
+        	splitMessage(str, str1, str2);
+        	mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT, "%s", str1, currIndex);  
+        	mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE + 1, INPUT_INDENT, "%s", str2, currIndex);  
+        }
+        else
+        {
+	        mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT, "%s", str, currIndex);  
+	    }
     }
 }
 
@@ -165,7 +178,7 @@ void printHeader(char* otwTitle)
 
 void addMessageToDisplay(char* msg)
 {
-    if (strcmp(messageQueue[MAX_MESSAGES - 1], msg) != 0)
+    if (strcmp(messageQueue[MAX_MESSAGES - 1], msg) != 0 && strlen(msg) > 13)
     {
         memmove(messageQueue[0], messageQueue[1], sizeof(messageQueue) - sizeof(messageQueue[0]));
         strcpy(messageQueue[MAX_MESSAGES - 1], msg);    
