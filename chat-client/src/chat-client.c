@@ -54,7 +54,6 @@ void getTime(char* timeString);
 void getUserInput(char* str);
 void printHeader();
 void addMessageToDisplay(char* msg);
-int getOutputPos();
 void setUserName(char* str, char* name);
 void printMessages();
 void splitMessage(char* str, char* str1, char* str2);
@@ -62,6 +61,7 @@ void sendMessage(int socketID, char* ip, char* name, char* str, char* timeString
 void *getSendMessage();
 void *listener();
 bool parseArgument(char *argv);
+void clearWindow(WINDOW* win);
 
 WINDOW* outgoingTitleWindow;
 WINDOW* outgoingMessageWindow;
@@ -114,8 +114,11 @@ void getUserInput(char* str)
 
     while (newChar != 10 || currIndex == 0)
     {        
+	    mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT - 3, ">>", currIndex);  
+	    wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, strlen(str) + INPUT_INDENT);          
         box(outgoingMessageWindow, 0, 0);
         newChar = wgetch(outgoingMessageWindow);
+        printHeader("Outgoing Message");
         if (newChar == 7 && currIndex > 0)
         {
             str[--currIndex] = 0;                    
@@ -129,9 +132,8 @@ void getUserInput(char* str)
             printHeader("Max message size reached!");
         }
         wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT);
-        wclrtoeol(outgoingMessageWindow);  
+        clearWindow(outgoingMessageWindow);
         mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT, "%s", str, currIndex);  
-        wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, strlen(str) + INPUT_INDENT);          
     }
 }
 
@@ -171,15 +173,6 @@ void addMessageToDisplay(char* msg)
     }
 }
 
-int getOutputPos()
-{
-    if (line < MAX_MESSAGES)
-    {
-        line++;
-    }
-    return line;
-}
-
 void setUserName(char* str, char* name)
 {
     if (strlen(&str[6]) > NAME_MAX_CHARACTERS)
@@ -203,13 +196,12 @@ void printMessages()
 {
     int x, y;
     getyx(outgoingMessageWindow, y, x);
+    clearWindow(incomingMessageWindow);
 
     for(int i = 0; i < MAX_MESSAGES; i++)
     {
         int xOffset = (COLS - strlen(messageQueue[i]))/2;
         int yOffset = LINES - 7 - CHAT_HEIGHT - MAX_MESSAGES;
-        wmove(incomingMessageWindow, i + yOffset, 0);
-        wclrtoeol(incomingMessageWindow);
         mvwprintw(incomingMessageWindow, i + yOffset, xOffset, "%s", messageQueue[i]);
     }    
     box(incomingMessageWindow, 0, 0);
@@ -389,6 +381,18 @@ WINDOW* newWindow(int height, int width, int y, int x)
     return win;
 }
 
+void clearWindow(WINDOW* win)
+{
+	int x, y;
+	getmaxyx(win, y, x);
+	for (int i = 0;  i < y; i++)
+	{
+		wmove(win, i, 0);
+		wclrtoeol(win);
+	}
+	box(win, 0, 0);
+}
+
 int main(int argc, char *argv[])
 {
     int len;
@@ -478,7 +482,7 @@ int main(int argc, char *argv[])
             addMessageToDisplay("");
             addMessageToDisplay("Press any key to exit...");
         }
-        wgetch(outgoingMessageWindow);
+        getch();
         delwin(outgoingMessageWindow);
         delwin(outgoingTitleWindow);
 
