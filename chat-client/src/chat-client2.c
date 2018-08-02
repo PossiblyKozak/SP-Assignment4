@@ -30,17 +30,21 @@
 #include <time.h>
 #include <signal.h>
 
+//Includes add by Attila
+#include <ncurses.h>
+#include <fcntl.h>
+#include <stdarg.h>
+
 // Constants
 #define CURR_SOCKET 9030
-#define INCOMING_INPUT_LINE 2
-#define INPUT_INDENT 5
-#define MAX_MESSAGES 10
+#define INPUT_LINE 17
+#define MAX_MESSAGES 13
 #define MAX_MESSAGE_LENGTH 80
-#define NAME_MAX_CHARACTERS 15
+
 //Constants by Attila
 #define CHAT_HEIGHT 5
-#define CHAT_WIDTH COLS
-#define CHAT_START_X 0
+#define CHAT_WIDTH COLS-2
+#define CHAT_START_X 1
 #define CHAT_START_Y LINES-5
 
 #define MESSAGE_HEIGHT LINES-4
@@ -63,19 +67,17 @@ void *getSendMessage();
 void *listener();
 bool parseArgument(char *argv);
 
-WINDOW* outgoingTitleWindow;
-WINDOW* outgoingMessageWindow;
-
-WINDOW* incomingTitleWindow;
-WINDOW* incomingMessageWindow;
 // Globals
-char gUserName[20], gServerName[NAME_MAX_CHARACTERS];
+char gUserName[20], gServerName[20];
 char messageQueue[MAX_MESSAGES][MAX_MESSAGE_LENGTH];
 int sockfd;
 int done = 0;
 int line = 2; // Line position of messages
 pthread_mutex_t mutexsum = PTHREAD_MUTEX_INITIALIZER;  
 
+//ATTTILAS GLOBALS
+WINDOW* chatWindow;
+WINDOW* messageWindow;
 
 void getIP(char *ip)
 {
@@ -100,23 +102,32 @@ void getTime(char* timeString)
     strftime(timeString, 11, "(%H:%M:%S)", currTimeInfo);
 }
 
-void getUserInput(char* str)
+void getUserInput(char* str)//EDITED HERE BY ATTILA
 {
     char newChar = -1;
     int currIndex = 0;
-    
-    wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, 0);
-    wclrtoeol(outgoingMessageWindow);
-    flushinp();
-    box(outgoingMessageWindow, 0, 0);
-    mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT - 3, ">>", currIndex);  
-    wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT);
+    //move(INPUT_LINE,0); removed by Attila
+    wmove(chatWindow, 2, 3);
+    //clrtoeol(); removed by Attila
+    wclrtoeol(chatWindow);
 
+    //move(INPUT_LINE,0); removed by Attila
+    wmove(chatWindow, 2, 3);
+    box(chatWindow, 0, 0);   
+    mvwprintw(chatWindow, 2, 2, ">", currIndex); 
+
+    flushinp();
     while (newChar != 10 || currIndex == 0)
-    {        
-        box(outgoingMessageWindow, 0, 0);
-        newChar = wgetch(outgoingMessageWindow);
-        if (newChar == 7 && currIndex > 0)
+    {
+        newChar = wgetch(chatWindow);
+
+        //move(INPUT_LINE + 1, 0); removed by Attila
+        wmove(chatWindow, 2, 3);
+
+        //clrtoeol(); removed by Attila
+	wclrtoeol(chatWindow); 
+	mvwprintw(chatWindow, 2, 2, ">", currIndex); 
+        if (newChar == 127)
         {
             str[--currIndex] = 0;                    
         }
@@ -124,51 +135,34 @@ void getUserInput(char* str)
         {
             str[currIndex++] = newChar;
         }
-        else if (currIndex == 80)
-        {
-            printHeader("Max message size reached!");
-        }
-        wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT);
-        wclrtoeol(outgoingMessageWindow);  
-        mvwprintw(outgoingMessageWindow, INCOMING_INPUT_LINE, INPUT_INDENT, "%s", str, currIndex);  
-        wmove(outgoingMessageWindow, INCOMING_INPUT_LINE, strlen(str) + INPUT_INDENT);          
+        //move(INPUT_LINE, 0); removed by Attila
+        wmove(chatWindow,2, 3);
+
+        //clrtoeol(); removed by Attila
+	wclrtoeol(chatWindow);
+
+        //mvprintw(INPUT_LINE, 0, "%s", str, currIndex); removed by Attila
+	mvwprintw(chatWindow, 2, 3, "%s", str, currIndex); 
+
+        //move(INPUT_LINE, strlen(str));removed by Attila
+	wmove(chatWindow, 2, strlen(str) + 3);  
+	box(chatWindow, 0, 0);   
     }
 }
 
-void printHeader(char* otwTitle)
+void printHeader()
 {
-    //int x, y;
-    //getyx(outgoingMessageWindow, y, x);
-
-    wmove(incomingTitleWindow, 1, 1);
-    wclrtoeol(incomingTitleWindow);
-    int xOffset = (COLS - (strlen("Username: ") + strlen(gUserName)))/2 + 1;
-    mvwprintw(incomingTitleWindow, 1, xOffset, "Username: %s", gUserName);
-    box(incomingTitleWindow, 0, 0);
-    
-    wmove(outgoingTitleWindow, 1, 1);
-    wclrtoeol(outgoingTitleWindow);
-    xOffset = (COLS - strlen(otwTitle))/2 + 1;
-    mvwprintw(outgoingTitleWindow, 1, xOffset, otwTitle);
-    box(outgoingTitleWindow, 0, 0);
-
-    wrefresh(incomingTitleWindow);
-    wrefresh(outgoingTitleWindow);
-
-    wrefresh(incomingMessageWindow);
-    wrefresh(outgoingMessageWindow);
-
-    //wmove(outgoingMessageWindow, y, x);
+    move(0, 0);
+    clrtoeol();
+    printw("UserID: %-20s\tServer Name: %s\n", gUserName, gServerName);
 }
 
 void addMessageToDisplay(char* msg)
 {
-    if (strcmp(messageQueue[MAX_MESSAGES - 1], msg) != 0)
-    {
-        memmove(messageQueue[0], messageQueue[1], sizeof(messageQueue) - sizeof(messageQueue[0]));
-        strcpy(messageQueue[MAX_MESSAGES - 1], msg);    
-        printMessages();
-    }
+    memmove(messageQueue[0], messageQueue[1], sizeof(messageQueue) - sizeof(messageQueue[0]));
+    sprintf(msg,"%-80s",msg);
+    strncpy(messageQueue[MAX_MESSAGES - 1], msg, 80);
+    printMessages();
 }
 
 int getOutputPos()
@@ -182,16 +176,16 @@ int getOutputPos()
 
 void setUserName(char* str, char* name)
 {
-    if (strlen(&str[6]) > NAME_MAX_CHARACTERS)
+    if (strlen(&str[6]) > 20)
     {
-        addMessageToDisplay("/name has a maximum name size of 15 characters, try again.");                    
+        addMessageToDisplay("/name has a maximum name size of 20 characters, try again.");                    
     }
     else if (strlen(&str[6]) > 0)
     {
         write(sockfd,str,strlen(str));
-        strcpy(gUserName, &str[6]);
+        //strcpy(gUserName, &str[6]);
         strncpy(name, gUserName, 5);
-        printHeader("Outgoing Message");
+        printHeader();
     }
     else
     {
@@ -199,23 +193,31 @@ void setUserName(char* str, char* name)
     }
 }
 
-void printMessages()
+void printMessages() //EDITED HERE BY ATTILA
 {
     int x, y;
-    getyx(outgoingMessageWindow, y, x);
+    getyx(chatWindow, y, x);
 
     for(int i = 0; i < MAX_MESSAGES; i++)
     {
-        int xOffset = (COLS - strlen(messageQueue[i]))/2;
-        int yOffset = LINES - 7 - CHAT_HEIGHT - MAX_MESSAGES;
-        wmove(incomingMessageWindow, i + yOffset, 0);
-        wclrtoeol(incomingMessageWindow);
-        mvwprintw(incomingMessageWindow, i + yOffset, xOffset, "%s", messageQueue[i]);
-    }    
-    box(incomingMessageWindow, 0, 0);
-    wrefresh(incomingMessageWindow);
-    printHeader("Outgoing Message");
-    wmove(outgoingMessageWindow, y, x);
+        //move(i+2, 0); Removed by Attila	
+        //wmove(messageWindow, i+2, 1);
+
+        //clrtoeol(); Removed by Attila
+        //wclrtoeol(messageWindow); 
+
+        //mvprintw(i+2, 0, "%s", messageQueue[i]); Removed by Attila
+        mvwprintw(messageWindow,i+2, 1, "%s", messageQueue[i]);
+    }
+    //refresh(); Removed by Attila
+    //wrefresh(messageWindow);
+
+    //move(INPUT_LINE, 0); Removed by Attila
+    //return to getxy
+    wmove(chatWindow, y, x);
+    box(chatWindow,0,0);
+    box(messageWindow,0,0);
+    wrefresh(messageWindow);
 }
 
 void splitMessage(char* str, char* str1, char* str2)
@@ -364,7 +366,7 @@ bool parseArgument(char *argv)
     bool success = true;
     if (strstr(argv, "-user") != NULL)
     {
-        strncpy(gUserName, argv + 5, NAME_MAX_CHARACTERS);
+        strncpy(gUserName, argv + 5, 20);
     }
     else if (strstr(argv, "-server") != NULL)
     {
@@ -391,8 +393,22 @@ WINDOW* newWindow(int height, int width, int y, int x)
 
 int main(int argc, char *argv[])
 {
+    initscr();
+    resizeterm(LINES, 80);
+    keypad(chatWindow, TRUE);     
     int len;
-    int result;    
+    int result;  
+    //Added by Attila below    
+    initscr();
+    cbreak();
+    noecho();
+    refresh();  
+    
+    messageWindow = newWindow(MESSAGE_HEIGHT,MESSAGE_WIDTH,MESSAGE_START_Y, MESSAGE_START_X);
+    //scrollok(messageWindow, TRUE);
+
+    chatWindow = newWindow(CHAT_HEIGHT, CHAT_WIDTH, CHAT_START_Y, CHAT_START_X);
+    //scrollok(chatWindow,TRUE);
 
     if ((argc == 3 && (!parseArgument(argv[1]) || !parseArgument(argv[2]))) || argc != 3)
     {
@@ -400,41 +416,8 @@ int main(int argc, char *argv[])
     }
     else
     {
-        initscr();
-        refresh();
-
-        incomingTitleWindow = newWindow(3, MESSAGE_WIDTH, 0, 0);
-        incomingMessageWindow = newWindow(LINES - 6 - CHAT_HEIGHT, MESSAGE_WIDTH, 3, 0);
-
-        outgoingTitleWindow = newWindow(3, CHAT_WIDTH, CHAT_START_Y-3, CHAT_START_X);
-        outgoingMessageWindow = newWindow(CHAT_HEIGHT, CHAT_WIDTH, CHAT_START_Y, CHAT_START_X);
         
-        keypad(outgoingMessageWindow, TRUE);  
-        keypad(incomingMessageWindow, TRUE);  
-
-        scrollok(outgoingMessageWindow, TRUE);
-        scrollok(incomingMessageWindow, TRUE);
-        scrollok(outgoingTitleWindow, TRUE);
-        scrollok(incomingTitleWindow, TRUE);
-
-        start_color();
-
-        init_pair(1, COLOR_BLACK, COLOR_WHITE);
-        init_pair(2, COLOR_WHITE, COLOR_BLACK);
-
-        use_default_colors();
-
-        wbkgd(outgoingTitleWindow, COLOR_PAIR(1));
-        wbkgd(incomingTitleWindow, COLOR_PAIR(1));
-        wbkgd(outgoingMessageWindow, COLOR_PAIR(2));
-        wbkgd(incomingMessageWindow, COLOR_PAIR(2));
-
-        wrefresh(outgoingTitleWindow);
-        wrefresh(incomingTitleWindow);
-
-        wrefresh(outgoingMessageWindow);
-        wrefresh(incomingMessageWindow);
-        printHeader("Outgoing Message");
+        printHeader();
 
         // Make socket
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -444,23 +427,11 @@ int main(int argc, char *argv[])
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = inet_addr(gServerName); //127.0.0.1 for local connections
         address.sin_port = htons(CURR_SOCKET);
-
-        addMessageToDisplay(" ######  ########             ###    ##       ");
-        addMessageToDisplay("##    ## ##     ##           ## ##   ##    ## ");
-        addMessageToDisplay("##       ##     ##          ##   ##  ##    ## ");
-        addMessageToDisplay(" ######  ########  ####### ##     ## ##    ## ");
-        addMessageToDisplay("      ## ##                ######### #########");
-        addMessageToDisplay("##    ## ##                ##     ##       ## ");
-        addMessageToDisplay(" ######  ##                ##     ##       ## ");
-        addMessageToDisplay("==============================================");
-        addMessageToDisplay("           Alex Kozak & Attila Katona         ");
-        addMessageToDisplay("                                              ");
-
-
+        
         // Make connection
         if(connect(sockfd, (struct sockaddr *)&address, sizeof(address)) == -1)
         {
-            printHeader("Connection failed, try again.");
+            perror("Connection failed, try again.\n");
         }
         else
         {
@@ -475,16 +446,9 @@ int main(int argc, char *argv[])
             pthread_create(&threads[0], &attr, getSendMessage, (void *)gUserName);
             pthread_create(&threads[1], &attr, listener, NULL);
             while(!done);
-            addMessageToDisplay("");
-            addMessageToDisplay("Press any key to exit...");
         }
-        wgetch(outgoingMessageWindow);
-        delwin(outgoingMessageWindow);
-        delwin(outgoingTitleWindow);
-
-        delwin(incomingMessageWindow);
-        delwin(incomingTitleWindow);
-        endwin();
     }   
+    delwin(chatWindow);//Edited by Attila, used to be just endwin();
+    delwin(messageWindow);
     return 0;
 }

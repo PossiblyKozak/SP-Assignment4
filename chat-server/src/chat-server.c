@@ -15,9 +15,11 @@
 // Constants
 #define _GNU_SOURCE
 #define PORT_NUMBER 9030
+#define NAME_MAX_CHARACTERS 15
+
 
 // Globals
-char activeUsernames[10][20];
+char activeUsernames[10][NAME_MAX_CHARACTERS];
 int activeSockets[10];
 pthread_t clientThreads[10];
 int activeSocketCount = 0;
@@ -47,12 +49,12 @@ void removeClientAtIndex(int i)
 
 void sendToAllOtherSockets(int socketID, char* msg)
 {
-	sprintf(msg, "%-80s", msg);
+	//sprintf(msg, "%-80s", msg);
 	for (int i = 0; i < activeSocketCount; i++)
 	{
 		if (activeSockets[i] != socketID)
 		{
-			write(activeSockets[i], msg, 80);
+			write(activeSockets[i], msg, strlen(msg));
 		}
 	}
 }
@@ -103,11 +105,9 @@ void *getMessages(void *newSocketID)
 			}
 			else if (strstr(messageBuffer, "/name ") != NULL)
 			{
-				printf("intended name change...\n");
-				char newName[20];
-				memset(newName, 0, 20);
+				char newName[NAME_MAX_CHARACTERS];
+				memset(newName, 0, NAME_MAX_CHARACTERS);
 				memmove(newName, &messageBuffer[6], strlen(messageBuffer) - 6);				
-				printf("%s\n", newName);
 
 				if (strlen(newName) > 0)
 				{
