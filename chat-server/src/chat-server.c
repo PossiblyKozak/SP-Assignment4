@@ -52,12 +52,26 @@ pthread_t newThread(void* threadFunction, void* threadArguments);
 
 void error(const char *msg)
 {
+	// FUNCTION     : error
+    // DESCRIPTION  : Prints an error message and exits the program
+    // PARAMETERS   :   
+    //	  const char *msg 		: Message to exit with
+    // RETURNS      : 
+    //    VOID
+
     perror(msg);
     exit(1);
 }
 
 void removeClientAtIndex(int i)
 {
+	// FUNCTION     : removeClientAtIndex
+    // DESCRIPTION  : Removes an item from the global active index at index i
+    // PARAMETERS   :   
+    //	  int i 		: The global index to remove from the active list
+    // RETURNS      : 
+    //    VOID
+
 	memmove(&activeSockets[i], &activeSockets[i+1], sizeof(activeSockets) - sizeof(activeSockets[i]));
 	memmove(&activeUsernames[i], &activeUsernames[i+1], sizeof(activeUsernames) - sizeof(activeUsernames[i]));
 	memmove(&clientThreads[i], &clientThreads[i+1], sizeof(clientThreads) - sizeof(clientThreads[i]));			    		
@@ -66,6 +80,14 @@ void removeClientAtIndex(int i)
 
 void sendToAllOtherSockets(int socketID, char* msg)
 {
+    // FUNCTION     : sendToAllOtherSockets
+    // DESCRIPTION  : Sends a message to all active sockets aside from the given socketID
+    // PARAMETERS   :   
+    //	  int socketID 		: The socket to not send the message to
+    //    char *msg			: The message to send to all clients    
+    // RETURNS      : 
+    //    VOID
+
 	for (int i = 0; i < activeSocketCount; i++)
 	{
 		if (activeSockets[i] != socketID)
@@ -77,6 +99,13 @@ void sendToAllOtherSockets(int socketID, char* msg)
 
 int getIndexBySocketID(int socketID)
 {
+	// FUNCTION     : getIndexBySocketID
+    // DESCRIPTION  : Returns the global index of the given socketID
+    // PARAMETERS   :   
+    //	  int socketID 		: The socket to get the global index of
+    // RETURNS      : 
+    //    int 	: The ID if found, -1 if not found
+
 	for (int i = 0; i < activeSocketCount; i++)
 	{
 		if (activeSockets[i] == socketID)
@@ -87,6 +116,14 @@ int getIndexBySocketID(int socketID)
 
 void changeName(char* messageBuffer, int socket)
 {
+    // FUNCTION     : changeName
+    // DESCRIPTION  : Changes the name of the given socket to the new one in the message buffer
+    // PARAMETERS   :   
+    //    char *messageBuffer		: The message buffer containing the new name
+    //	  int socket 				: The socket to change the name reference to
+    // RETURNS      : 
+    //    VOID
+
 	char newName[NAME_MAX_CHARACTERS];
 	memset(newName, 0, NAME_MAX_CHARACTERS);
 	memmove(newName, &messageBuffer[6], strlen(messageBuffer) - 6);				
@@ -106,6 +143,14 @@ void changeName(char* messageBuffer, int socket)
 
 void printUsers(int socket)
 {
+    // FUNCTION     : printUsers
+    // DESCRIPTION  : prints all users to the socket given, response to a /users command
+    // PARAMETERS   :   
+    //    char *messageBuffer		: The message buffer to send to other clients
+    //	  int socket 				: The socket to disconnect
+    // RETURNS      : 
+    //    VOID
+
 	char messageBuffer[MESSAGE_LENGTH];
 	memset(messageBuffer, 0, MESSAGE_LENGTH);
 	sprintf(messageBuffer, "%d Users: ", activeSocketCount);
@@ -122,15 +167,30 @@ void printUsers(int socket)
 
 void exitProgram(char* messageBuffer, int socket)
 {
-		int index = getIndexBySocketID(socket);
-		sprintf(messageBuffer, "[SERVER] >> User %s left the chatroom", activeUsernames[index]);
-		sendToAllOtherSockets(socket, messageBuffer);
-		removeClientAtIndex(index);
-		pthread_exit(NULL);
+    // FUNCTION     : exitProgram
+    // DESCRIPTION  : Gets messages from the given socket
+    // PARAMETERS   :   
+    //    char *messageBuffer		: The message buffer to send to other clients
+    //	  int socket 				: The socket to disconnect
+    // RETURNS      : 
+    //    VOID
+
+	int index = getIndexBySocketID(socket);
+	sprintf(messageBuffer, "[SERVER] >> User %s left the chatroom", activeUsernames[index]);
+	sendToAllOtherSockets(socket, messageBuffer);
+	removeClientAtIndex(index);
+	pthread_exit(NULL);
 }
 
 void *getMessages(void *newSocketID)
 {
+    // FUNCTION     : getMessages
+    // DESCRIPTION  : Gets messages from the given socket
+    // PARAMETERS   :   
+    //    void *newSocketID		: The socketID as a pointer
+    // RETURNS      : 
+    //    VOID * 	: Returns nothing, thread requirement
+
 	char messageBuffer[MESSAGE_LENGTH];
 	int socket = *(int*)newSocketID;
 	int n;
@@ -141,7 +201,6 @@ void *getMessages(void *newSocketID)
 
 	    if (messageBuffer[0] != 0 && messageBuffer[MESSAGE_ARROW_INDEX] == '>')
 	    {
-		    printf("%s\n",messageBuffer);
 	    	messageBuffer[MESSAGE_ARROW_INDEX] = '<';
 	    	messageBuffer[MESSAGE_ARROW_INDEX+1] = '<';	    		
 	    	sendToAllOtherSockets(socket, messageBuffer);
@@ -169,6 +228,13 @@ void *getMessages(void *newSocketID)
 
 void *getNewClients(void *tmpSocketID)
 {
+    // FUNCTION     : getNewClients
+    // DESCRIPTION  : Sets a listener for new clients attempting to connect
+    // PARAMETERS   :   
+    //    void *tmpSocketID		: The socketID as a pointer
+    // RETURNS      : 
+    //    VOID * 	: Returns nothing, thread requirement
+
 	int socketID = *(int*)tmpSocketID;
 	struct sockaddr_in client_address;
 	socklen_t clilentSize;
@@ -189,7 +255,7 @@ void *getNewClients(void *tmpSocketID)
 			{
 			    if (read(newSocketID,activeUsernames[activeSocketCount],sizeof(activeUsernames[activeSocketCount])) >= 0 && activeUsernames[activeSocketCount] != NULL)
 			    {
-			    	char message[80];
+			    	char message[MESSAGE_LENGTH];
 			    	memset(message, 0, MESSAGE_LENGTH);				    	
 			    	sprintf(message, "[SERVER] >> User %s entered the chatroom.", activeUsernames[activeSocketCount]);
 			    	sendToAllOtherSockets(socketID, message);
@@ -206,6 +272,13 @@ void *getNewClients(void *tmpSocketID)
 
 void *checkActiveClients()
 {
+    // FUNCTION     : checkActiveClients
+    // DESCRIPTION  : This function pings all active clients and checks for disconnections
+    // PARAMETERS   :   
+    //    VOID
+    // RETURNS      : 
+    //    VOID * 	: Returns nothing, thread requirement
+
 	while (activeSocketCount > 0 || !hasAnyoneConnected)
 	{
 		for (int i = 0; i < activeSocketCount; i++)
@@ -226,12 +299,21 @@ void *checkActiveClients()
 	        }
 	        free(buffer);
 		}
-		sleep(1);		
+		sleep(1);
 	}
 }
 
 pthread_t newThread(void* threadFunction, void* threadArguments)
 {
+	// FUNCTION     : newThread
+    // DESCRIPTION  : This function initializes a new thread with a 
+    //                fiven function and arguments
+    // PARAMETERS   :   
+    //    void* threadFunction	: The function run by the thread
+    //    void* threadArguments	: The arguments given to the thread
+    // RETURNS      : 
+    //    int       : Returns -1 if the connection failed, another number of successful
+
 	pthread_t threads;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -240,16 +322,22 @@ pthread_t newThread(void* threadFunction, void* threadArguments)
 	return threads;
 }
 
-int main(int argc, char *argv[])
+
+int initalizeAndConnectToSocket(int *socketID)
 {
-	memset(activeSockets, 0, sizeof(activeSockets));
-	memset(activeUsernames, 0, sizeof(activeUsernames));
-    int socketID;
+    // FUNCTION     : initalizeAndConnectToSocket
+    // DESCRIPTION  : This function initializes the socket connection with the 
+    //                server provided by the user
+    // PARAMETERS   :   
+    //    int *socketID 	: The socketID to be generated and returned
+    // RETURNS      : 
+    //    int       : Returns -1 if the bind failed, another number if successful
+
     struct sockaddr_in server_address;
 
-    socketID = socket(AF_INET, SOCK_STREAM, 0);
+    *socketID = socket(AF_INET, SOCK_STREAM, 0);
 
-    if (socketID < 0)
+    if (*socketID < 0)
     {
     	error("There was an error opening the socket");
     }
@@ -260,20 +348,26 @@ int main(int argc, char *argv[])
     server_address.sin_addr.s_addr = INADDR_ANY;
     server_address.sin_port = htons(PORT_NUMBER);
 
-    if (bind(socketID, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) 
-    {
-    	close(socketID);
-    	if (bind(socketID, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) 
-        	error("ERROR on binding");
-    }
+    return bind(*socketID, (struct sockaddr *) &server_address, sizeof(server_address));
+}
 
+int main(int argc, char *argv[])
+{
+	// Define and clear variables
+	memset(activeSockets, 0, sizeof(activeSockets));
+	memset(activeUsernames, 0, sizeof(activeUsernames));
+    int socketID;
+
+    // Bind and Connect
+    if (initalizeAndConnectToSocket(&socketID) < 0) { error("ERROR on binding"); }
+
+    // Generate getNewClient and checkActiveClients threads
 	pthread_t threads = newThread(getNewClients, (void*)&socketID);
 	pthread_t activityCheckThread = newThread(checkActiveClients, NULL);
 
+	// Confirm that there are active clients once per second
 	while (activeSocketCount > 0 || !hasAnyoneConnected){ sleep(1); };
-	printf("All clients are now offline.\nEnding program...\n");
 	pthread_cancel(threads);
-    
     close(socketID);
     return 0;
 }
